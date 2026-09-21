@@ -107,15 +107,19 @@ My first `curl` used `-s`, so it printed nothing and I could not see the error. 
 Compose sends host port 8080 to container port 81, but nothing listens on 81 inside nginx (connection refused). nginx listens on 80 and answers there.
 
 - Fix:
-Changed the port mapping of nginx in docker-compose.yml from 8080:81 to 8080:80 (`${PUBLIC_PORT:-8080}:80`).
+In docker-compose.yml, in the ports line of nginx, I changed the container port from 81 to 80 (`${PUBLIC_PORT:-8080}:80`). The fix commit was made on 2026-09-21 at about 14:49 EEST.
 
 - Retest evidence:
-Retested at <output of date> EEST after `docker compose -p barq-assessment up -d`.
-<paste the ps PORTS line and the first lines of the curl output>
-nginx now answers on 8080 (it returns 502, which is a separate issue).
+Ran `docker compose -p barq-assessment up -d`, then `ps` and `curl`. The time is from the Date header of the curl response (12:13:11 GMT = 15:13:11 EEST).
+```
+nginx   ...   Up 54 seconds   127.0.0.1:8080->80/tcp
+
+$ curl -sS -i --max-time 5 http://127.0.0.1:8080/health
+HTTP/1.1 502 Bad Gateway
+Server: nginx/1.28.3
+Date: Mon, 21 Sep 2026 12:13:11 GMT
+```
+nginx now answers on 8080 (before: `Empty reply from server`). It returns 502, which is a different problem.
 
 - Related commit:
 7c314a3
-
-- Remaining uncertainty:
-nginx returns `502 Bad Gateway`, so it cannot reach the apps behind it. Cause not known yet, I will check `docker logs nginx`.
