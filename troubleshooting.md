@@ -65,3 +65,55 @@ e02618b
 
 - Remaining uncertainty:
 `healthy` only means the app answers inside its own container. `curl` through nginx still fails, so that is the next issue.
+
+##########################################################################
+##########################################################################
+
+## Entry 2 / Mon Sep 21 01:44:57 PM EEST 2026 / port 8080 does not reach nginx
+
+- Symptom:
+After Entry 1, both apps were `healthy`, but `curl` to port 8080 still failed. With `-sS` it showed `curl: (52) Empty reply from server`. The nginx log had only startup lines and no requests.
+
+- Hypothesis:
+The compose file publishes host port 8080 to container port 81, but nginx listens on port 80.
+
+- Command or test:
+`curl -sS -i --max-time 5 http://127.0.0.1:8080/health`
+`docker exec nginx nginx -T | grep -n listen`
+`docker exec nginx wget -S -O- -T 3 http://127.0.0.1:80/health`
+`docker exec nginx wget -S -O- -T 3 http://127.0.0.1:81/health`
+
+- Actual output:
+```
+$ curl -sS -i --max-time 5 http://127.0.0.1:8080/health
+curl: (52) Empty reply from server
+
+nginx   ...   80/tcp, 127.0.0.1:8080->81/tcp
+
+$ docker exec nginx nginx -T | grep -n listen
+17:        listen 80;
+
+$ docker exec nginx wget -S -O- -T 3 http://127.0.0.1:80/health
+  HTTP/1.1 502 Bad Gateway
+
+$ docker exec nginx wget -S -O- -T 3 http://127.0.0.1:81/health
+wget: can't connect to remote host (127.0.0.1): Connection refused
+```
+
+- Failed attempt and what changed your thinking:
+My first `curl` used `-s`, so it printed nothing and I could not see the error. I ran it again with `-sS` and got `Empty reply from server`.
+
+- Root cause:
+Compose sends host port 8080 to container port 81, but nothing listens on 81 inside nginx (connection refused). nginx listens on 80 and answers there.
+
+- Fix:
+Not done yet.
+
+- Retest evidence:
+Not done yet.
+
+- Related commit:
+Not done yet.
+
+- Remaining uncertainty:
+Port 80 answers with `502 Bad Gateway`, so nginx cannot reach the apps behind it. I have not looked into that yet, it is the next issue.
