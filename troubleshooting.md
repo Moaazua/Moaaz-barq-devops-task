@@ -123,3 +123,48 @@ nginx now answers on 8080 (before: `Empty reply from server`). It returns 502, w
 
 - Related commit:
 7c314a3
+##########################################################################
+##########################################################################
+## Entry 3 / 23 09:58:54 AM EEST 2026 / apps unreachable from other containers (502)
+
+- Symptom:
+After fixing the port mapping (Entry 2), nginx answered on 8080 but returned 502. Both apps were `healthy`.
+
+- Hypothesis:
+The apps only accept connections from inside their own container (APP_HOST is 127.0.0.1), so nginx cannot reach them even though the healthcheck (which runs inside the container) succeeds.
+
+- Command or test:
+`docker logs nginx`
+`docker exec nginx wget -S -O- -T 3 http://app-02:8080/health`
+`docker inspect app-02 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^APP_(HOST|PORT)='`
+
+- Actual output:
+```
+$ docker logs nginx (excerpt)
+connect() failed (111: Connection refused) while connecting to upstream,
+upstream: "http://172.19.0.2:8080/health"
+
+$ docker exec nginx wget -S -O- -T 3 http://app-02:8080/health
+wget: can't connect to remote host (172.19.0.2): Connection refused
+
+APP_HOST=127.0.0.1
+APP_PORT=8080
+```
+
+- Failed attempt and what changed your thinking:
+I first tested by running the health check from inside app-02 itself (container calling its own loopback address). It returned 200, but that was misleading — a container can always reach its own loopback, so this did not prove nginx could reach it. The real test had to come from a different container (nginx).
+
+- Root cause:
+APP_HOST was set to 127.0.0.1 in docker-compose.yml, so Flask only accepted connections from inside its own container. nginx, calling from a different container, was refused.
+
+- Fix:
+Changed APP_HOST to 0.0.0.0 in docker-compose.yml (applies to both app-01 and app-02).
+
+- Retest evidence:
+`docker exec nginx wget http://app-02:8080/health` -> `200 OK` (was: connection refused).
+
+- Related commit:
+<hash of the APP_HOST fix commit>
+
+- Remaining uncertainty:
+After this fix, app-02 answered but its X-Instance-ID header said "app-01" — a separate identity bug. Also app-01 still failed (different cause: wrong upstream port), tracked in Entry 4.
