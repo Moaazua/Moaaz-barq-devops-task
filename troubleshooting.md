@@ -126,7 +126,7 @@ nginx now answers on 8080 (before: `Empty reply from server`). It returns 502, w
 ##########################################################################
 ##########################################################################
 ## Entry 3 / 23 09:58:54 AM EEST 2026 / apps unreachable from other containers (502)
-
+Note: work paused after Entry 2 (network/VM issues), resumed on 2026-09-23.
 - Symptom:
 After fixing the port mapping (Entry 2), nginx answered on 8080 but returned 502. Both apps were `healthy`.
 
@@ -164,7 +164,57 @@ Changed APP_HOST to 0.0.0.0 in docker-compose.yml (applies to both app-01 and ap
 `docker exec nginx wget http://app-02:8080/health` -> `200 OK` (was: connection refused).
 
 - Related commit:
-<hash of the APP_HOST fix commit>
-
+bd61938
 - Remaining uncertainty:
 After this fix, app-02 answered but its X-Instance-ID header said "app-01" — a separate identity bug. Also app-01 still failed (different cause: wrong upstream port), tracked in Entry 4.
+##########################################################################
+##########################################################################
+## Entry 4 / 2026-09-23 / wrong upstream port and duplicate INSTANCE_ID
+
+- Symptom:
+After Entry 3, app-02 answered through nginx, but its X-Instance-ID header said "app-01". app-01 still failed with a refused connection.
+
+- Hypothesis:
+(1) nginx upstream for app-01 uses the wrong port (8081 instead of 8080).
+(2) app-02's INSTANCE_ID in docker-compose.yml is a copy-paste duplicate of app-01's.
+
+- Command or test:
+`docker exec nginx wget -S -O- -T 3 http://app-01:8081/health`
+Read nginx/nginx.conf upstream block and the app-02 environment in docker-compose.yml.
+
+- Actual output:
+```
+$ docker exec nginx wget -S -O- -T 3 http://app-01:8081/health
+Connecting to app-01:8081 (172.19.0.2:8081)
+wget: can't connect to remote host (172.19.0.2): Connection refused
+
+nginx.conf: server app-01:8081 max_fails=0;
+docker-compose.yml (app-02): INSTANCE_ID: "app-01"
+```
+
+- Failed attempt and what changed your thinking:
+None for this issue.
+
+- Root cause:
+nginx.conf pointed to app-01 on port 8081, but the app listens on 8080. Separately, app-02's INSTANCE_ID was copied from app-01 instead of being set to "app-02".
+
+- Fix:
+Changed the upstream port for app-01 from 8081 to 8080 in nginx/nginx.conf.
+Changed INSTANCE_ID for app-02 from "app-01" to "app-02" in docker-compose.yml.
+
+- Retest evidence:
+After `docker compose up -d` and `docker compose restart nginx` (nginx needed a restart to reload the mounted config file, `up -d` alone did not reload it):
+```
+$ for i in 1 2 3 4 5 6; do curl -s http://127.0.0.1:8080/instance; echo; done
+instance_id alternates between "app-01" and "app-02" across requests
+$ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/health
+200
+```
+
+- Related commit:
+a395982
+
+- Remaining uncertainty:
+None for this issue. Both apps now respond with distinct identities through nginx.
+##########################################################################
+##########################################################################
