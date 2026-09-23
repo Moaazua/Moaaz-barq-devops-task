@@ -125,7 +125,7 @@ nginx now answers on 8080 (before: `Empty reply from server`). It returns 502, w
 7c314a3
 ##########################################################################
 ##########################################################################
-## Entry 3 / 23 09:58:54 AM EEST 2026 / apps unreachable from other containers (502)
+## Entry 3 / 2026-09-23 09:58 EEST / apps unreachable from other containers (502)
 Note: work paused after Entry 2 (network/VM issues), resumed on 2026-09-23.
 - Symptom:
 After fixing the port mapping (Entry 2), nginx answered on 8080 but returned 502. Both apps were `healthy`.
@@ -216,5 +216,22 @@ a395982
 
 - Remaining uncertainty:
 None for this issue. Both apps now respond with distinct identities through nginx.
+##########################################################################
+##########################################################################
+## Entry 5 / 2026-09-23 / /ready returns unavailable for postgres and redis
+- Symptom: /ready returned postgres and redis both "unavailable".
+- Cause: config/app.env had wrong ports (DATABASE_URL:5433 vs actual 5432, REDIS_URL:6380 vs actual 6379) and a mismatched postgres password (last char d vs c in compose).
+- Evidence: postgres log showed "password authentication failed for user barq_app"; app log showed dependency_error postgres.
+- Fix: corrected ports and password in config/app.env.
+- Retest: /ready now returns "ready" for both. POST/GET /records and /counter work end to end.
+- Related commit: e168f9e
+##########################################################################
+##########################################################################
+## Entry 6 / 2026-09-23 / postgres data lost on container recreation (volume misconfigured)
+- Symptom: postgres volume was mounted on /var/lib/postgresql/backup (wrong path) while /var/lib/postgresql/data (the real data dir) had tmpfs on top, so writes never persisted to the named volume.
+- Also found: nginx was attached to the backend network, giving it direct access to postgres/redis (violates task requirement to block this).
+- Fix: mounted postgres-data volume on /var/lib/postgresql/data, removed the tmpfs line; removed nginx from the backend network (frontend only).
+- Retest: created a record (id 3), force-recreated app-01/app-02/postgres containers, GET /records still shows id 3. nginx cannot resolve "postgres" (bad address) confirming network isolation.
+- Related commit: baeb073
 ##########################################################################
 ##########################################################################
