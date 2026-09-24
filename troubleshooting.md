@@ -241,3 +241,11 @@ None for this issue. Both apps now respond with distinct identities through ngin
 - Fix: changed USER root to USER app in Dockerfile, removed the COPY config/app.env line. Set restart: unless-stopped and mem_limit/cpus on every service in docker-compose.yml.
 - Retest: `docker exec app-01 whoami` returns "app" (not root). All containers healthy after rebuild.
 - Related commit: 8194fdb
+##########################################################################
+##########################################################################
+## Entry 8 / 2026-09-24 / validate.py crashed instead of failing cleanly
+- Symptom: with app-01 stopped, validate.py raised a JSONDecodeError instead of printing FAIL.
+- Cause: nginx returns an HTML error page (502/504) when a backend is down; the script tried to json.loads() it directly.
+- Fix: added safe JSON parsing that falls back to a raw text snippet instead of crashing.
+- Retest: with app-01 stopped, validate.py now reports 5 clean FAILs and exits 1; with app-01 restored, 13/13 PASS and exits 0.
+- Observation: failed requests during the outage returned 504 (timeout), not 502, because nginx's proxy_next_upstream is off, so it waits out the 3s proxy_read_timeout on app-01 instead of retrying app-02 immediately.
