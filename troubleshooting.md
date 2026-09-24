@@ -249,3 +249,10 @@ None for this issue. Both apps now respond with distinct identities through ngin
 - Fix: added safe JSON parsing that falls back to a raw text snippet instead of crashing.
 - Retest: with app-01 stopped, validate.py now reports 5 clean FAILs and exits 1; with app-01 restored, 13/13 PASS and exits 0.
 - Observation: failed requests during the outage returned 504 (timeout), not 502, because nginx's proxy_next_upstream is off, so it waits out the 3s proxy_read_timeout on app-01 instead of retrying app-02 immediately.
+##########################################################################
+##########################################################################
+## Entry 9 / 2026-09-23 / failure_test.py implemented and verified
+- Test: stopped app-01, sent 10 requests to /instance, restarted app-01.
+- Result: 5/10 requests succeeded (served by app-02), 4 timed out (504), 1 refused (502) — consistent with nginx's proxy_next_upstream being off (it waits out the timeout on the down backend instead of retrying the healthy one immediately).
+- After restart: both app-01 and app-02 visible again via /instance; app-01 healthy in `docker compose ps`.
+- Related commit: ca8b755
