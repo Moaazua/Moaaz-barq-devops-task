@@ -235,3 +235,9 @@ None for this issue. Both apps now respond with distinct identities through ngin
 - Related commit: baeb073
 ##########################################################################
 ##########################################################################
+## Entry 7 / 2026-09-23 / Dockerfile ran as root, no restart policy or resource limits
+- Symptom: Dockerfile ended with USER root (app image ran as root despite a non-root user being created). No restart policy (restart: "no") and no memory/CPU limits on any service. An unused COPY config/app.env line copied secrets into the image layer.
+- Cause: leftover from the starter; USER app was never applied, restart was disabled, limits were never set.
+- Fix: changed USER root to USER app in Dockerfile, removed the COPY config/app.env line. Set restart: unless-stopped and mem_limit/cpus on every service in docker-compose.yml.
+- Retest: `docker exec app-01 whoami` returns "app" (not root). All containers healthy after rebuild.
+- Related commit: 8194fdb
