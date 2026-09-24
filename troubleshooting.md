@@ -123,8 +123,10 @@ nginx now answers on 8080 (before: `Empty reply from server`). It returns 502, w
 
 - Related commit:
 7c314a3
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 3 / 2026-09-23 09:58 EEST / apps unreachable from other containers (502)
 Note: work paused after Entry 2 (network/VM issues), resumed on 2026-09-23.
 - Symptom:
@@ -167,8 +169,10 @@ Changed APP_HOST to 0.0.0.0 in docker-compose.yml (applies to both app-01 and ap
 bd61938
 - Remaining uncertainty:
 After this fix, app-02 answered but its X-Instance-ID header said "app-01" — a separate identity bug. Also app-01 still failed (different cause: wrong upstream port), tracked in Entry 4.
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 4 / 2026-09-23 / wrong upstream port and duplicate INSTANCE_ID
 
 - Symptom:
@@ -216,8 +220,10 @@ a395982
 
 - Remaining uncertainty:
 None for this issue. Both apps now respond with distinct identities through nginx.
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 5 / 2026-09-23 / /ready returns unavailable for postgres and redis
 - Symptom: /ready returned postgres and redis both "unavailable".
 - Cause: config/app.env had wrong ports (DATABASE_URL:5433 vs actual 5432, REDIS_URL:6380 vs actual 6379) and a mismatched postgres password (last char d vs c in compose).
@@ -225,34 +231,51 @@ None for this issue. Both apps now respond with distinct identities through ngin
 - Fix: corrected ports and password in config/app.env.
 - Retest: /ready now returns "ready" for both. POST/GET /records and /counter work end to end.
 - Related commit: e168f9e
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 6 / 2026-09-23 / postgres data lost on container recreation (volume misconfigured)
 - Symptom: postgres volume was mounted on /var/lib/postgresql/backup (wrong path) while /var/lib/postgresql/data (the real data dir) had tmpfs on top, so writes never persisted to the named volume.
 - Also found: nginx was attached to the backend network, giving it direct access to postgres/redis (violates task requirement to block this).
 - Fix: mounted postgres-data volume on /var/lib/postgresql/data, removed the tmpfs line; removed nginx from the backend network (frontend only).
 - Retest: created a record (id 3), force-recreated app-01/app-02/postgres containers, GET /records still shows id 3. nginx cannot resolve "postgres" (bad address) confirming network isolation.
 - Related commit: baeb073
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 7 / 2026-09-23 / Dockerfile ran as root, no restart policy or resource limits
 - Symptom: Dockerfile ended with USER root (app image ran as root despite a non-root user being created). No restart policy (restart: "no") and no memory/CPU limits on any service. An unused COPY config/app.env line copied secrets into the image layer.
 - Cause: leftover from the starter; USER app was never applied, restart was disabled, limits were never set.
 - Fix: changed USER root to USER app in Dockerfile, removed the COPY config/app.env line. Set restart: unless-stopped and mem_limit/cpus on every service in docker-compose.yml.
 - Retest: `docker exec app-01 whoami` returns "app" (not root). All containers healthy after rebuild.
 - Related commit: 8194fdb
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 8 / 2026-09-24 / validate.py crashed instead of failing cleanly
 - Symptom: with app-01 stopped, validate.py raised a JSONDecodeError instead of printing FAIL.
 - Cause: nginx returns an HTML error page (502/504) when a backend is down; the script tried to json.loads() it directly.
 - Fix: added safe JSON parsing that falls back to a raw text snippet instead of crashing.
 - Retest: with app-01 stopped, validate.py now reports 5 clean FAILs and exits 1; with app-01 restored, 13/13 PASS and exits 0.
 - Observation: failed requests during the outage returned 504 (timeout), not 502, because nginx's proxy_next_upstream is off, so it waits out the 3s proxy_read_timeout on app-01 instead of retrying app-02 immediately.
+
 ##########################################################################
 ##########################################################################
+
 ## Entry 9 / 2026-09-23 / failure_test.py implemented and verified
 - Test: stopped app-01, sent 10 requests to /instance, restarted app-01.
 - Result: 5/10 requests succeeded (served by app-02), 4 timed out (504), 1 refused (502) — consistent with nginx's proxy_next_upstream being off (it waits out the timeout on the down backend instead of retrying the healthy one immediately).
 - After restart: both app-01 and app-02 visible again via /instance; app-01 healthy in `docker compose ps`.
 - Related commit: ca8b755
+
+##########################################################################
+##########################################################################
+
+## Entry 10 / 2026-09-24 / backup.sh and restore.sh implemented and verified
+- Implemented backup.sh (pg_dump, custom format, saved to ./backups/ which is git-ignored) and restore.sh (pg_restore --clean --if-exists).
+- Test: created record "BEFORE-BACKUP-MARKER" (id 6), ran backup.sh, then created "AFTER-BACKUP-SHOULD-DISAPPEAR" (id 7). Confirmed both existed via GET /records.
+- Ran restore.sh with the backup file. GET /records afterward shows id 6 present and id 7 gone — proving the restore rolled the database back to the exact backup point, not just "ran without error".
+- Related commit: 95b4dc9
