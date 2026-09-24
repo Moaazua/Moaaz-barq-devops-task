@@ -95,3 +95,57 @@ Do not use docker compose down to reset the runtime challenge.
 Outside the recorded challenge, docker compose -p barq-assessment down stops this lab.
 Do not use --volumes during persistence tests. Avoid global Docker prune/cleanup commands.
 Back up anything you need before removing containers; investigate whether data actually persists.
+
+#########################################################################
+#########################################################################
+
+# BARQ DevOps Assessment — Solution
+
+Flask API + PostgreSQL + Redis behind NGINX, on Docker Compose. Two app instances,
+network-isolated backend, persistent Postgres volume, health checks, and automated
+validation/failure/backup scripts.
+
+## Setup
+```bash
+git clone git@github.com:Moaazua/Moaaz-barq-devops-task.git
+cd Moaaz-barq-devops-task
+cp .env.example .env
+```
+
+## Build and start
+```bash
+docker compose -p barq-assessment up --build -d
+docker compose -p barq-assessment ps -a
+```
+
+## Test
+```bash
+curl -s http://127.0.0.1:8080/health
+curl -s http://127.0.0.1:8080/ready
+python3 validate.py
+```
+
+## Failure test
+```bash
+python3 failure_test.py
+```
+
+## Backup / restore
+```bash
+./backup.sh
+./restore.sh backups/<the-generated-file>.dump
+```
+
+## Stop / cleanup
+```bash
+docker compose -p barq-assessment down
+```
+(Do not use `--volumes` unless you intend to delete all Postgres data.)
+
+## Documentation
+- troubleshooting.md — investigation journal
+- log_analysis.md — historical log analysis
+- decisions.md — key decisions and trade-offs
+- security_review.md — risks and production recommendations
+- AI_USAGE.md — AI usage disclosure
+- docs/EVIDENCE_INDEX.md — requirement-to-evidence mapping
