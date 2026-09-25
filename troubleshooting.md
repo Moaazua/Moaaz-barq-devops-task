@@ -279,3 +279,14 @@ None for this issue. Both apps now respond with distinct identities through ngin
 - Test: created record "BEFORE-BACKUP-MARKER" (id 6), ran backup.sh, then created "AFTER-BACKUP-SHOULD-DISAPPEAR" (id 7). Confirmed both existed via GET /records.
 - Ran restore.sh with the backup file. GET /records afterward shows id 6 present and id 7 gone — proving the restore rolled the database back to the exact backup point, not just "ran without error".
 - Related commit: 95b4dc9
+
+##########################################################################
+##########################################################################
+
+## Entry 11 / 2026-09-25 / depends_on health conditions added; verified CI actually fails on a broken healthcheck
+- Symptom: intentionally broke the app healthcheck (changed the probed path from /health to /healthzzz) and pushed to test whether CI would catch it. CI still passed. Root cause: the CI readiness step curls the Flask /ready endpoint directly, which is independent of the Docker-level HEALTHCHECK status — the container could be reported "unhealthy" while /ready still returns 200, so CI had no way to see it.
+- Fix: added `depends_on: condition: service_healthy` for app-01/app-02 (on postgres, redis) and for nginx (on app-01, app-02) in docker-compose.yml, so a container will not start until its dependency is actually reported healthy — turning the healthcheck from a cosmetic status into something Compose enforces.
+- Test: re-broke the healthcheck path (/health -> /healthzzz) again and pushed. This time nginx failed to start because app-01/app-02 stayed unhealthy, and CI's "Wait for /ready" step failed as expected (run #8, commit 5d6c54d) — confirming the fix closes the gap, not just that the YAML parses.
+- Reverted the path back to /health and pushed; CI passed again with all services healthy.
+- Failed attempt that taught something: the first "green" CI run after breaking the healthcheck was misleading — it proved the app could still answer HTTP requests, but proved nothing about whether the Docker healthcheck itself was correct. This is the concrete answer to "what does green CI prove, or not prove?": a green run only proves what its steps actually check, not the full intended contract.
+- Related commits: a49284d (intentionally broke healthcheck to verify CI fails), 33252f0
