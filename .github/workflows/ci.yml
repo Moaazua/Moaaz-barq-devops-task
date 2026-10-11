@@ -7,6 +7,9 @@ on:
     branches: [main]
 
 jobs:
+###############################################################
+############# stage-1 #############
+###############################################################
   validate-environment:
     runs-on: ubuntu-latest
     steps:
@@ -59,3 +62,38 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose -p barq-assessment down
+###############################################################
+############# stage-2 #############
+###############################################################
+  build-and-push:
+    needs: validate-environment
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/barq-app:${{ github.sha }} .
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/barq-app:latest .
+
+      - name: Push image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/barq-app:${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/barq-app:latest
+###############################################################
+############# stage-3 #############
+###############################################################
+  deploy-to-k8s:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    steps:
+      - name: Deploy new image to cluster
+        run: |
+          kubectl set image deployment/barq-app barq-app=${{ secrets.DOCKERHUB_USERNAME }}/barq-app:${{ github.sha }} -n default
+          kubectl rollout status deployment/barq-app -n default --timeout=120s
